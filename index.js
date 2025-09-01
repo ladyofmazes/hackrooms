@@ -537,10 +537,14 @@ const Engine = (function () {
 	 * @function Engine.load
 	 */
 	Engine.load = function (basePath, size) {
+                console.log("Loading...");
 		if (loadPromise == null) {
 			loadPath = basePath;
+                        console.log("Load path");
 			loadPromise = preloader.loadPromise(`${loadPath}.wasm`, size, true);
+                        console.log("Load promise");
 			requestAnimationFrame(preloader.animateProgress);
+                        console.log("Load animation");
 		}
 		return loadPromise;
 	};
@@ -593,6 +597,7 @@ const Engine = (function () {
 						initPromise = Promise.reject(new Error('A base path must be provided when calling `init` and the engine is not loaded.'));
 						return initPromise;
 					}
+                                        console.log("Loading");
 					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`]);
 				}
 				const me = this;
@@ -711,10 +716,12 @@ const Engine = (function () {
 				this.config.update(override);
 				// Add main-pack argument.
 				const exe = this.config.executable;
+                                console.log("Fun day off");
 				const pack = this.config.mainPack || `index.pck`;
 				this.config.args = ['--main-pack', pack].concat(this.config.args);
 				// Start and init with execName as loadPath if not inited.
 				const me = this;
+                                console.log("Off we go");
 				return Promise.all([
 					this.init(exe),
 					this.preloadFile(pack, pack),

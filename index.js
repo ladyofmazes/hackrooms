@@ -553,54 +553,83 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 			'noExitRuntime': false,
 			'dynamicLibraries': [`${loadPath}.side.wasm`].concat(this.gdextensionLibs),
 			'emscriptenPoolSize': this.emscriptenPoolSize,
-            'instantiateWasm': function (imports, onSuccess) {
+            'instantiateWasm': async function (imports, onSuccess) {
                 function done(result) {
-                    onSuccess(result['instance'], result['module']);
+                    onSuccess(result.instance, result.module);
                 }
                 const wasmFile = `${loadPath}.wasm`;
                 const brFile = `${wasmFile}.br`;
-                let fetchSourcePromise;
-            
-                // Prioritize fetching the Brotli-compressed file if it's explicitly configured.
-                if (cfg.fileSizes && brFile in cfg.fileSizes) {
-                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
-                } else {
-                    // If no .br file is explicitly configured, use the original response 'r'.
-                    fetchSourcePromise = Promise.resolve(r);
-                }
             
                 const handleInstantiationError = (err) => {
                     console.error('WebAssembly instantiation failed:', err);
                     throw err;
                 };
             
-                // Attempt streaming instantiation if supported by the browser.
-                if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
-                    fetchSourcePromise.then(function (response) {
-                        // Create a new Response with a guaranteed 'Content-Type: application/wasm' header.
-                        const headers = new Headers(response.headers);
-                        headers.set('Content-Type', 'application/wasm');
-                        const correctedResponse = new Response(response.body, { headers: headers }); // <-- Fixed here
-                        return WebAssembly.instantiateStreaming(correctedResponse, imports);
-                    })
-                    .then(done)
-                    .catch(function (streamingErr) {
-                        console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
-                        // Fallback to ArrayBuffer instantiation if streaming fails.
-                        fetchSourcePromise.then(response => response.arrayBuffer())
-                            .then(buffer => WebAssembly.instantiate(buffer, imports))
-                            .then(done)
-                            .catch(handleInstantiationError);
-                    });
+                let fetchSourcePromise;
+                let isBrotli = false;
+            
+                // Prioritize Brotli if configured.
+                if (cfg.fileSizes && brFile in cfg.fileSizes) {
+                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
+                    isBrotli = true;
                 } else {
-                    // Fallback for browsers that do not support WebAssembly.instantiateStreaming.
-                    fetchSourcePromise.then(response => response.arrayBuffer())
-                        .then(buffer => WebAssembly.instantiate(buffer, imports))
-                        .then(done)
-                        .catch(handleInstantiationError);
+                    // Assume 'r' is a pre-fetched Response object for the uncompressed WASM.
+                    fetchSourcePromise = Promise.resolve(r);
                 }
             
-                r = null;
+                try {
+                    const response = await fetchSourcePromise;
+            
+                    if (typeof WebAssembly.instantiateStreaming !== 'undefined') {
+                        try {
+                            // Ensure correct MIME type for streaming compilation.
+                            const headers = new Headers(response.headers);
+                            headers.set('Content-Type', 'application/wasm');
+                            const correctedResponse = new Response(response.body, { headers: headers });
+            
+                            const result = await WebAssembly.instantiateStreaming(correctedResponse, imports);
+                            done(result);
+                        } catch (streamingErr) {
+                            console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
+                            
+                            // --- Fallback handling for Brotli vs uncompressed ---
+                            const buffer = await response.arrayBuffer();
+                            let wasmBytes = new Uint8Array(buffer);
+            
+                            if (isBrotli) {
+                                if (typeof brotliDecompress !== 'undefined') {
+                                    console.log('Decompressing Brotli data for fallback...');
+                                    wasmBytes = brotliDecompress(wasmBytes); // Call the global decompressor
+                                } else {
+                                    throw new Error("Cannot decompress Brotli data: brotliDecompress is not available.");
+                                }
+                            }
+            
+                            const result = await WebAssembly.instantiate(wasmBytes, imports);
+                            done(result);
+                        }
+                    } else {
+                        // Fallback for browsers that do not support instantiateStreaming.
+                        const buffer = await response.arrayBuffer();
+                        let wasmBytes = new Uint8Array(buffer);
+            
+                        if (isBrotli) {
+                            if (typeof brotliDecompress !== 'undefined') {
+                                console.log('Decompressing Brotli data for fallback...');
+                                wasmBytes = brotliDecompress(wasmBytes);
+                            } else {
+                                throw new Error("Cannot decompress Brotli data: brotliDecompress is not available.");
+                            }
+                        }
+            
+                        const result = await WebAssembly.instantiate(wasmBytes, imports);
+                        done(result);
+                    }
+                } catch (err) {
+                    handleInstantiationError(err);
+                } finally {
+                    r = null; // Clean up the reference to the initial response.
+                }
                 return {};
             },
 

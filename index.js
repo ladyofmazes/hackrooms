@@ -566,21 +566,23 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                 };
             
                 let fetchSourcePromise;
-                let isBrotli = false;
             
-                // Determine which file to fetch and set the brotli flag.
+                // Determine which file to fetch.
                 if (cfg.fileSizes && brFile in cfg.fileSizes) {
                     fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
-                    isBrotli = true;
                 } else {
-                    // Assume 'r' is a pre-fetched Response object for the uncompressed WASM.
                     fetchSourcePromise = Promise.resolve(r);
                 }
             
                 try {
                     const response = await fetchSourcePromise;
-            
-                    if (typeof WebAssembly.instantiateStreaming !== 'undefined') {
+                    
+                    // Check if the browser natively decompressed the content.
+                    // This is the most reliable way to know if we need manual decompression.
+                    const contentEncoding = response.headers.get('Content-Encoding');
+                    const needsManualBrotliDecompress = contentEncoding === 'br';
+                    
+                    if (typeof WebAssembly.instantiateStreaming !== 'undefined' && !needsManualBrotliDecompress) {
                         try {
                             // To support a fallback, we must clone the response before consuming it.
                             const responseForStreaming = response.clone();
@@ -592,32 +594,22 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
             
                             const result = await WebAssembly.instantiateStreaming(correctedResponse, imports);
                             done(result);
-            
                         } catch (streamingErr) {
                             console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
                             
                             // The `response` variable here has an unconsumed body because we used a clone for streaming.
                             const buffer = await response.arrayBuffer();
-                            let wasmBytes = new Uint8Array(buffer);
-            
-                            if (isBrotli) {
-                                if (typeof brotliDecompress !== 'undefined') {
-                                    console.log('Decompressing Brotli data for fallback...');
-                                    wasmBytes = brotliDecompress(wasmBytes);
-                                } else {
-                                    throw new Error("Cannot decompress Brotli data: brotliDecompress is not available for fallback.");
-                                }
-                            }
-            
+                            const wasmBytes = new Uint8Array(buffer);
+                            
                             const result = await WebAssembly.instantiate(wasmBytes, imports);
                             done(result);
                         }
                     } else {
-                        // Fallback for browsers that do not support instantiateStreaming.
+                        // Fallback for browsers without streaming or if manual decompression is needed.
                         const buffer = await response.arrayBuffer();
                         let wasmBytes = new Uint8Array(buffer);
             
-                        if (isBrotli) {
+                        if (needsManualBrotliDecompress) {
                             if (typeof brotliDecompress !== 'undefined') {
                                 console.log('Decompressing Brotli data for fallback...');
                                 wasmBytes = brotliDecompress(wasmBytes);
@@ -636,7 +628,6 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                 }
                 return {};
             },
-
 
 			'locateFile': function (path) {
 				if (!path.startsWith('godot.')) {

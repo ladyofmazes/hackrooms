@@ -553,20 +553,57 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 			'noExitRuntime': false,
 			'dynamicLibraries': [`${loadPath}.side.wasm`].concat(this.gdextensionLibs),
 			'emscriptenPoolSize': this.emscriptenPoolSize,
-			'instantiateWasm': function (imports, onSuccess) {
-				function done(result) {
-					onSuccess(result['instance'], result['module']);
-				}
-				if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
-					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);
-				} else {
-					r.arrayBuffer().then(function (buffer) {
-						WebAssembly.instantiate(buffer, imports).then(done);
-					});
-				}
-				r = null;
-				return {};
-			},
+            'instantiateWasm': function (imports, onSuccess) {
+                function done(result) {
+                    onSuccess(result['instance'], result['module']);
+                }
+                const wasmFile = `${loadPath}.wasm`;
+                const brFile = `${wasmFile}.br`;
+                let fetchSourcePromise;
+            
+                // Prioritize fetching the Brotli-compressed file if it's explicitly configured.
+                if (cfg.fileSizes && brFile in cfg.fileSizes) {
+                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
+                } else {
+                    // If no .br file is explicitly configured, use the original response 'r'.
+                    fetchSourcePromise = Promise.resolve(r);
+                }
+            
+                const handleInstantiationError = (err) => {
+                    console.error('WebAssembly instantiation failed:', err);
+                    throw err;
+                };
+            
+                // Attempt streaming instantiation if supported by the browser.
+                if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
+                    fetchSourcePromise.then(function (response) {
+                        // Create a new Response with a guaranteed 'Content-Type: application/wasm' header.
+                        const headers = new Headers(response.headers);
+                        headers.set('Content-Type', 'application/wasm');
+                        const correctedResponse = new Response(response.body, { headers: headers }); // <-- Fixed here
+                        return WebAssembly.instantiateStreaming(correctedResponse, imports);
+                    })
+                    .then(done)
+                    .catch(function (streamingErr) {
+                        console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
+                        // Fallback to ArrayBuffer instantiation if streaming fails.
+                        fetchSourcePromise.then(response => response.arrayBuffer())
+                            .then(buffer => WebAssembly.instantiate(buffer, imports))
+                            .then(done)
+                            .catch(handleInstantiationError);
+                    });
+                } else {
+                    // Fallback for browsers that do not support WebAssembly.instantiateStreaming.
+                    fetchSourcePromise.then(response => response.arrayBuffer())
+                        .then(buffer => WebAssembly.instantiate(buffer, imports))
+                        .then(done)
+                        .catch(handleInstantiationError);
+                }
+            
+                r = null;
+                return {};
+            },
+
 			'locateFile': function (path) {
 				if (!path.startsWith('godot.')) {
 					return path;

@@ -568,7 +568,7 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                 let fetchSourcePromise;
                 let isBrotli = false;
             
-                // Prioritize Brotli if configured.
+                // Determine which file to fetch and set the brotli flag.
                 if (cfg.fileSizes && brFile in cfg.fileSizes) {
                     fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
                     isBrotli = true;
@@ -582,26 +582,30 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
             
                     if (typeof WebAssembly.instantiateStreaming !== 'undefined') {
                         try {
+                            // To support a fallback, we must clone the response before consuming it.
+                            const responseForStreaming = response.clone();
+                            
                             // Ensure correct MIME type for streaming compilation.
-                            const headers = new Headers(response.headers);
+                            const headers = new Headers(responseForStreaming.headers);
                             headers.set('Content-Type', 'application/wasm');
-                            const correctedResponse = new Response(response.body, { headers: headers });
+                            const correctedResponse = new Response(responseForStreaming.body, { headers: headers });
             
                             const result = await WebAssembly.instantiateStreaming(correctedResponse, imports);
                             done(result);
+            
                         } catch (streamingErr) {
                             console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
                             
-                            // --- Fallback handling for Brotli vs uncompressed ---
+                            // The `response` variable here has an unconsumed body because we used a clone for streaming.
                             const buffer = await response.arrayBuffer();
                             let wasmBytes = new Uint8Array(buffer);
             
                             if (isBrotli) {
                                 if (typeof brotliDecompress !== 'undefined') {
                                     console.log('Decompressing Brotli data for fallback...');
-                                    wasmBytes = brotliDecompress(wasmBytes); // Call the global decompressor
+                                    wasmBytes = brotliDecompress(wasmBytes);
                                 } else {
-                                    throw new Error("Cannot decompress Brotli data: brotliDecompress is not available.");
+                                    throw new Error("Cannot decompress Brotli data: brotliDecompress is not available for fallback.");
                                 }
                             }
             
@@ -618,7 +622,7 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                                 console.log('Decompressing Brotli data for fallback...');
                                 wasmBytes = brotliDecompress(wasmBytes);
                             } else {
-                                throw new Error("Cannot decompress Brotli data: brotliDecompress is not available.");
+                                throw new Error("Cannot decompress Brotli data: brotliDecompress is not available for fallback.");
                             }
                         }
             
@@ -628,10 +632,11 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                 } catch (err) {
                     handleInstantiationError(err);
                 } finally {
-                    r = null; // Clean up the reference to the initial response.
+                    r = null;
                 }
                 return {};
             },
+
 
 			'locateFile': function (path) {
 				if (!path.startsWith('godot.')) {

@@ -568,10 +568,12 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                 let fetchSourcePromise;
             
                 // Determine which file to fetch.
-                if (cfg.fileSizes && brFile in cfg.fileSizes) {
-                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
-                } else {
-                    fetchSourcePromise = Promise.resolve(r);
+				try {
+					fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
+					console.log("Fetched br file")
+                } catch (err) {
+					fetchSourcePromise = Promise.resolve(r);
+					console.log("Alternative fetch due to err ", err)
                 }
             
                 try {
@@ -580,10 +582,12 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                     // Check if the browser natively decompressed the content.
                     // This is the most reliable way to know if we need manual decompression.
                     const contentEncoding = response.headers.get('Content-Encoding');
-                    const needsManualBrotliDecompress = contentEncoding === 'br';
+					const needsManualBrotliDecompress = contentEncoding === 'br';
+					console.log("Got manual brotli deccompression needed ", needsManualBrotliDecompress)
                     
                     if (typeof WebAssembly.instantiateStreaming !== 'undefined' && !needsManualBrotliDecompress) {
-                        try {
+						try {
+							console.log("Have streaming")
                             // To support a fallback, we must clone the response before consuming it.
                             const responseForStreaming = response.clone();
                             
@@ -605,7 +609,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                             done(result);
                         }
                     } else {
-                        // Fallback for browsers without streaming or if manual decompression is needed.
+						// Fallback for browsers without streaming or if manual decompression is needed.
+						console.log("Need manual decompression")
                         const buffer = await response.arrayBuffer();
                         let wasmBytes = new Uint8Array(buffer);
             

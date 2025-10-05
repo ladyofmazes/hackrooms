@@ -580,7 +580,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
                     const response = await fetchSourcePromise;
                     
                     // Check if the browser natively decompressed the content.
-                    // This is the most reliable way to know if we need manual decompression.
+					// This is the most reliable way to know if we need manual decompression.
+					console.log("Headers ",response.headers)
                     const contentEncoding = response.headers.get('Content-Encoding');
 					const needsManualBrotliDecompress = contentEncoding === 'br';
 					console.log("Got manual brotli deccompression needed ", needsManualBrotliDecompress)

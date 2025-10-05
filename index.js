@@ -586,18 +586,11 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 					const needsManualBrotliDecompress = contentEncoding === 'br';
 					console.log("Got manual brotli deccompression needed ", needsManualBrotliDecompress)
                     
-                    if (typeof WebAssembly.instantiateStreaming !== 'undefined' && !needsManualBrotliDecompress) {
+                    if (typeof WebAssembly.instantiateStreaming !== 'undefined') {
 						try {
 							console.log("Have streaming")
-                            // To support a fallback, we must clone the response before consuming it.
-                            const responseForStreaming = response.clone();
-                            
-                            // Ensure correct MIME type for streaming compilation.
-                            const headers = new Headers(responseForStreaming.headers);
-                            headers.set('Content-Type', 'application/wasm');
-                            const correctedResponse = new Response(responseForStreaming.body, { headers: headers });
             
-                            const result = await WebAssembly.instantiateStreaming(correctedResponse, imports);
+                            const result = await WebAssembly.instantiateStreaming(response, imports);
                             done(result);
                         } catch (streamingErr) {
                             console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);

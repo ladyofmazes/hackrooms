@@ -557,8 +557,21 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 				function done(result) {
 					onSuccess(result['instance'], result['module']);
 				}
+                const wasmFile = `${loadPath}.wasm`;
+                const brFile = `${wasmFile}.br`;
+            
+                let fetchSourcePromise;
+            
+                // Determine which file to fetch.
+                try {
+                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
+                    console.log("Fetched br file")
+                } catch (err) {
+                    fetchSourcePromise = Promise.resolve(r);
+                    console.log("Alternative fetch due to err ", err)
+                }
 				if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
-					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);
+					WebAssembly.instantiateStreaming(fetchSourcePromise, imports).then(done);
 				} else {
 					r.arrayBuffer().then(function (buffer) {
 						WebAssembly.instantiate(buffer, imports).then(done);

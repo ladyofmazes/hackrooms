@@ -553,81 +553,20 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 			'noExitRuntime': false,
 			'dynamicLibraries': [`${loadPath}.side.wasm`].concat(this.gdextensionLibs),
 			'emscriptenPoolSize': this.emscriptenPoolSize,
-            'instantiateWasm': async function (imports, onSuccess) {
-                function done(result) {
-                    onSuccess(result.instance, result.module);
-                }
-                const wasmFile = `${loadPath}.wasm`;
-                const brFile = `${wasmFile}.br`;
-            
-                const handleInstantiationError = (err) => {
-                    console.error('WebAssembly instantiation failed:', err);
-                    throw err;
-                };
-            
-                let fetchSourcePromise;
-            
-                // Determine which file to fetch.
-				try {
-					fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
-					console.log("Fetched br file")
-                } catch (err) {
-					fetchSourcePromise = Promise.resolve(r);
-					console.log("Alternative fetch due to err ", err)
-                }
-            
-                try {
-                    const response = await fetchSourcePromise;
-                    
-                    // Check if the browser natively decompressed the content.
-					// This is the most reliable way to know if we need manual decompression.
-					console.log("Headers ",response.headers)
-                    const contentEncoding = response.headers.get('Content-Encoding');
-					const needsManualBrotliDecompress = contentEncoding === 'br';
-					console.log("Got manual brotli deccompression needed ", needsManualBrotliDecompress)
-                    
-                    if (typeof WebAssembly.instantiateStreaming !== 'undefined') {
-						try {
-							console.log("Have streaming")
-            
-                            const result = await WebAssembly.instantiateStreaming(response, imports);
-                            done(result);
-                        } catch (streamingErr) {
-                            console.warn('WebAssembly streaming compilation failed, attempting ArrayBuffer fallback:', streamingErr);
-                            
-                            // The `response` variable here has an unconsumed body because we used a clone for streaming.
-                            const buffer = await response.arrayBuffer();
-                            const wasmBytes = new Uint8Array(buffer);
-                            
-                            const result = await WebAssembly.instantiate(wasmBytes, imports);
-                            done(result);
-                        }
-                    } else {
-						// Fallback for browsers without streaming or if manual decompression is needed.
-						console.log("Need manual decompression")
-                        const buffer = await response.arrayBuffer();
-                        let wasmBytes = new Uint8Array(buffer);
-            
-                        if (needsManualBrotliDecompress) {
-                            if (typeof brotliDecompress !== 'undefined') {
-                                console.log('Decompressing Brotli data for fallback...');
-                                wasmBytes = brotliDecompress(wasmBytes);
-                            } else {
-                                throw new Error("Cannot decompress Brotli data: brotliDecompress is not available for fallback.");
-                            }
-                        }
-            
-                        const result = await WebAssembly.instantiate(wasmBytes, imports);
-                        done(result);
-                    }
-                } catch (err) {
-                    handleInstantiationError(err);
-                } finally {
-                    r = null;
-                }
-                return {};
-            },
-
+			'instantiateWasm': function (imports, onSuccess) {
+				function done(result) {
+					onSuccess(result['instance'], result['module']);
+				}
+				if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
+					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);
+				} else {
+					r.arrayBuffer().then(function (buffer) {
+						WebAssembly.instantiate(buffer, imports).then(done);
+					});
+				}
+				r = null;
+				return {};
+			},
 			'locateFile': function (path) {
 				if (!path.startsWith('godot.')) {
 					return path;
@@ -643,6 +582,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 					return `${loadPath}.side.wasm`;
 				} else if (path.endsWith('.wasm')) {
 					return `${loadPath}.wasm`;
+				} else if (path.endsWith('.wasm.br')) {
+					return `${loadPath}.wasm.br`;
 				}
 				return path;
 			},

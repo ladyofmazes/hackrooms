@@ -557,21 +557,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 				function done(result) {
 					onSuccess(result['instance'], result['module']);
 				}
-                const wasmFile = `${loadPath}.wasm`;
-                const brFile = `${wasmFile}.br`;
-            
-                let fetchSourcePromise;
-            
-                // Determine which file to fetch.
-                try {
-                    fetchSourcePromise = fetch(brFile, { credentials: 'same-origin' });
-                    console.log("Fetched br file")
-                } catch (err) {
-                    fetchSourcePromise = Promise.resolve(r);
-                    console.log("Alternative fetch due to err ", err)
-                }
 				if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
-					WebAssembly.instantiateStreaming(fetchSourcePromise, imports).then(done);
+					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);
 				} else {
 					r.arrayBuffer().then(function (buffer) {
 						WebAssembly.instantiate(buffer, imports).then(done);
@@ -748,7 +735,19 @@ const Engine = (function () {
 					// Make sure to test that when refactoring.
 					return new Promise(function (resolve, reject) {
 						promise.then(function (response) {
-							const cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
+                            const wasmFile = `${loadPath}.wasm`;
+                            const brFile = `${wasmFile}.br`;
+                        
+                            let cloned;
+                        
+                            // Determine which file to fetch.
+                            try {
+                                cloned = fetch(brFile, { credentials: 'same-origin' });
+                                console.log("Fetched br file")
+                            } catch (err) {
+							    cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
+                                console.log("Alternative fetch due to err ", err)
+                            }
 							Godot(me.config.getModuleConfig(loadPath, cloned)).then(function (module) {
 								const paths = me.config.persistentPaths;
 								module['initFS'](paths).then(function (err) {

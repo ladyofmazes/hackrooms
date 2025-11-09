@@ -582,8 +582,6 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 					return `${loadPath}.side.wasm`;
 				} else if (path.endsWith('.wasm')) {
 					return `${loadPath}.wasm`;
-				} else if (path.endsWith('.wasm.br')) {
-					return `${loadPath}.wasm.br`;
 				}
 				return path;
 			},
@@ -726,7 +724,7 @@ const Engine = (function () {
 						initPromise = Promise.reject(new Error('A base path must be provided when calling `init` and the engine is not loaded.'));
 						return initPromise;
 					}
-					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`]);
+					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm.br`]);
 				}
 				const me = this;
 				function doInit(promise) {
@@ -735,19 +733,7 @@ const Engine = (function () {
 					// Make sure to test that when refactoring.
 					return new Promise(function (resolve, reject) {
 						promise.then(function (response) {
-                            const wasmFile = `${loadPath}.wasm`;
-                            const brFile = `${wasmFile}.br`;
-                        
-                            let cloned;
-                        
-                            // Determine which file to fetch.
-                            try {
-                                cloned = fetch(brFile, { credentials: 'same-origin' });
-                                console.log("Fetched br file")
-                            } catch (err) {
-							    cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
-                                console.log("Alternative fetch due to err ", err)
-                            }
+							const cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
 							Godot(me.config.getModuleConfig(loadPath, cloned)).then(function (module) {
 								const paths = me.config.persistentPaths;
 								module['initFS'](paths).then(function (err) {

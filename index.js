@@ -580,8 +580,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 					return path;
 				} else if (path.endsWith('.side.wasm')) {
 					return `${loadPath}.side.wasm`;
-				} else if (path.endsWith('.wasm')) {
-					return `${loadPath}.wasm`;
+				} else if (path.endsWith('.wasm.br')) {
+					return `${loadPath}.wasm.br`;
 				}
 				return path;
 			},
@@ -684,7 +684,7 @@ const Engine = (function () {
 	Engine.load = function (basePath, size) {
 		if (loadPromise == null) {
 			loadPath = basePath;
-			loadPromise = preloader.loadPromise(`${loadPath}.wasm`, size, true);
+			loadPromise = preloader.loadPromise(`${loadPath}.wasm.br`, size, true);
 			requestAnimationFrame(preloader.animateProgress);
 		}
 		return loadPromise;
